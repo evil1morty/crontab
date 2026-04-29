@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub struct App {
     state: Arc<SharedState>,
     show_window: Arc<AtomicBool>,
+    last_visibility_sent: Option<bool>,
     quit_flag: Arc<AtomicBool>,
     tray: Option<crate::tray::TrayHandles>,
     // Edit form
@@ -28,10 +29,12 @@ impl App {
         show_window: Arc<AtomicBool>,
         quit_flag: Arc<AtomicBool>,
         tray: Option<crate::tray::TrayHandles>,
+        _start_hidden: bool,
     ) -> Self {
         Self {
             state,
             show_window,
+            last_visibility_sent: None,
             quit_flag,
             tray,
             edit_index: None,
@@ -114,11 +117,16 @@ impl eframe::App for App {
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
 
-        // Sync visibility from shared flag (tray can change it)
+        // Sync visibility from shared flag (tray can change it). Only send the
+        // command when the desired state changes — otherwise we'd spam Focus
+        // on every frame, stealing focus from other apps.
         let want_visible = self.show_window.load(Ordering::SeqCst);
-        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(want_visible));
-        if want_visible {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        if self.last_visibility_sent != Some(want_visible) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(want_visible));
+            if want_visible {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            }
+            self.last_visibility_sent = Some(want_visible);
         }
 
         // Quit if tray asked
@@ -315,7 +323,7 @@ impl eframe::App for App {
 
             ui.horizontal(|ui| {
                 let mut a = self.autostart_on;
-                if ui.checkbox(&mut a, "Start with Windows").changed() {
+                if ui.checkbox(&mut a, "Start with Windows (hidden)").changed() {
                     let exe = std::env::current_exe()
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_default();

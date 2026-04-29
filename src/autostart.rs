@@ -23,8 +23,8 @@ pub fn is_enabled() -> bool {
 pub fn enable(exe_path: &str) -> Result<()> {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let (key, _) = hkcu.create_subkey(RUN_KEY)?;
-    // Wrap in quotes so paths with spaces work
-    let value = format!("\"{}\"", exe_path);
+    // Wrap in quotes so paths with spaces work; --hidden so it stays in tray
+    let value = format!("\"{}\" --hidden", exe_path);
     key.set_value(VALUE_NAME, &value)?;
     Ok(())
 }
