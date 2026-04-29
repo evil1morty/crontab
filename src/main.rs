@@ -4,6 +4,7 @@ mod autostart;
 mod config;
 mod cron_parse;
 mod scheduler;
+mod theme;
 mod tray;
 mod ui;
 
