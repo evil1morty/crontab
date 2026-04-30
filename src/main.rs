@@ -19,7 +19,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = scheduler::SharedState::new(cfg);
     scheduler::spawn(state.clone());
 
-    // Start visible unless --hidden was passed (autostart uses --hidden)
     let show_window = Arc::new(AtomicBool::new(!start_hidden));
     let quit_flag = Arc::new(AtomicBool::new(false));
 
@@ -36,7 +35,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([720.0, 640.0])
             .with_min_inner_size([520.0, 480.0])
-            .with_title("Claude Cron"),
+            .with_title("Claude Cron")
+            .with_visible(!start_hidden),
         ..Default::default()
     };
 
@@ -48,13 +48,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Claude Cron",
         native_options,
         Box::new(move |cc| {
-            // Spawn a heartbeat that requests a repaint every 250ms even while
-            // the window is hidden, so update() keeps polling tray events.
-            let ctx = cc.egui_ctx.clone();
-            std::thread::spawn(move || loop {
-                ctx.request_repaint();
-                std::thread::sleep(std::time::Duration::from_millis(250));
-            });
+            // Wire tray menu events to wake egui directly. This replaces the
+            // old 250 ms repaint heartbeat that was burning ~20% CPU at idle.
+            if let Some(t) = &tray {
+                tray::install_handler(
+                    t,
+                    cc.egui_ctx.clone(),
+                    show_for_app.clone(),
+                    quit_for_app.clone(),
+                    state_for_app.clone(),
+                );
+            }
 
             Ok(Box::new(ui::App::new(
                 state_for_app,

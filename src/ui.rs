@@ -20,7 +20,8 @@ pub struct App {
     show_window: Arc<AtomicBool>,
     last_visibility_sent: Option<bool>,
     quit_flag: Arc<AtomicBool>,
-    tray: Option<crate::tray::TrayHandles>,
+    // Kept alive so the TrayIcon's Drop doesn't fire and remove the icon.
+    _tray: Option<crate::tray::TrayHandles>,
     theme_applied: bool,
 
     tab: Tab,
@@ -50,7 +51,7 @@ impl App {
             show_window,
             last_visibility_sent: None,
             quit_flag,
-            tray,
+            _tray: tray,
             theme_applied: false,
             tab: Tab::Jobs,
             edit_index: None,
@@ -158,10 +159,6 @@ impl eframe::App for App {
             self.theme_applied = true;
         }
 
-        if let Some(tray) = &self.tray {
-            crate::tray::poll(tray, &self.show_window, &self.quit_flag, &self.state);
-        }
-
         if ctx.input(|i| i.viewport().close_requested()) {
             self.show_window.store(false, Ordering::SeqCst);
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -182,6 +179,16 @@ impl eframe::App for App {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             std::process::exit(0);
         }
+
+        // When hidden, draw nothing and do not schedule any repaints. Tray
+        // menu clicks wake the event loop via the global MenuEvent handler.
+        if !want_visible {
+            return;
+        }
+
+        // While visible, refresh the live "next run in Xm" labels every 30s.
+        // User interaction wakes egui naturally, so this is the only timer.
+        ctx.request_repaint_after(std::time::Duration::from_secs(30));
 
         // Top header
         egui::TopBottomPanel::top("header")
