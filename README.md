@@ -5,7 +5,7 @@ A small Windows tray app that runs commands on a schedule.
 Schedule any command using classic 5-field cron syntax. Window Crontab lives in your system tray, fires the job at the right minute, captures output to a per-job log, and stays out of your way.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://github.com/evil1morty/crontab/actions/workflows/release.yml/badge.svg)](https://github.com/evil1morty/crontab/actions/workflows/release.yml)
+[![CI](https://github.com/evil1morty/crontab/actions/workflows/ci.yml/badge.svg)](https://github.com/evil1morty/crontab/actions/workflows/ci.yml)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-7C5CFF)](https://tauri.app)
 
 <p align="center">
