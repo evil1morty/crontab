@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Crontab",
+  "productName": "Window Crontab",
   "version": "0.2.0",
   "identifier": "com.crontab.app",
   "build": {
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Crontab",
+        "title": "Window Crontab",
         "width": 960,
         "height": 680,
         "minWidth": 720,

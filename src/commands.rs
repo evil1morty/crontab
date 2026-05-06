@@ -390,7 +390,7 @@ pub fn view_job_log(state: State<'_, Arc<SharedState>>, index: usize) -> Result<
     };
     let log_path = log_dir.join(format!("{}.log", scheduler::sanitize(&job_name)));
     if !log_path.exists() {
-        return Err("no log yet — this job has not run".into());
+        return Err("no log yet, this job has not run".into());
     }
     #[cfg(windows)]
     {

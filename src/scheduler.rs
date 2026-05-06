@@ -197,7 +197,7 @@ pub fn fire(job: &crate::config::Job, log_dir: &std::path::Path, state: Arc<Shar
         if let Some(o) = stdout { cmd.stdout(Stdio::from(o)); }
         if let Some(e) = stderr { cmd.stderr(Stdio::from(e)); }
 
-        // CREATE_NO_WINDOW = 0x08000000 — prevents flashing console on Windows
+        // CREATE_NO_WINDOW = 0x08000000 prevents the flashing console on Windows
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -218,7 +218,7 @@ pub fn fire(job: &crate::config::Job, log_dir: &std::path::Path, state: Arc<Shar
                                     if let Ok(f) = OpenOptions::new().create(true).append(true).open(&log_clone) {
                                         use std::io::Write;
                                         let mut f = f;
-                                        let _ = writeln!(f, "[killed — timed out after {timeout}s]");
+                                        let _ = writeln!(f, "[killed, timed out after {timeout}s]");
                                     }
                                     break EXIT_TIMEOUT;
                                 }

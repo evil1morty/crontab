@@ -1,4 +1,4 @@
-/* === Crontab — design tokens (mirrors the Stitch design system) === */
+/* === Crontab design tokens (mirrors the Stitch design system) === */
 :root {
   --bg: #0e0f14;
   --surface: #161821;
@@ -17,7 +17,7 @@
   --danger-soft: rgba(255, 92, 122, 0.16);
 }
 
-/* Light mode — the same Stitch design language inverted for paper-on-ink. */
+/* Light mode: the same Stitch design language inverted for paper-on-ink. */
 [data-theme="light"] {
   --bg: #f5f6f9;
   --surface: #ffffff;

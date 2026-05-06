@@ -160,7 +160,7 @@ function jobCard(j) {
   const cronClass = j.schedule_valid ? 'cron-pill' : 'cron-pill is-invalid';
   const next = j.schedule_valid && j.next_human && !j.exhausted
     ? `next: ${escHtml(j.next_display)} · ${escHtml(j.next_human)}`
-    : (j.exhausted ? 'auto-disabled — run limit reached' : 'invalid schedule');
+    : (j.exhausted ? 'auto-disabled, run limit reached' : 'invalid schedule');
 
   let pills = '';
   if (j.max_runs !== null && j.max_runs !== undefined) {
@@ -170,7 +170,7 @@ function jobCard(j) {
     pills += `<span class="count-pill is-muted" title="Total runs">${j.runs_count}×</span>`;
   }
   if (j.timeout_secs) pills += `<span class="count-pill is-muted" title="Killed after ${j.timeout_secs}s">⏱ ${j.timeout_secs}s</span>`;
-  if (j.run_on_startup) pills += `<span class="count-pill is-muted" title="Runs once when Crontab launches">↻ on launch</span>`;
+  if (j.run_on_startup) pills += `<span class="count-pill is-muted" title="Runs once when Window Crontab launches">↻ on launch</span>`;
   if (j.allow_concurrent) pills += `<span class="count-pill is-muted" title="Concurrent runs allowed">∥ concurrent</span>`;
   if (j.is_running) pills += `<span class="count-pill is-running" title="A run is in progress"><span class="dot-inline"></span> running</span>`;
 
@@ -198,7 +198,7 @@ function bindJobs() {
   if (filterEl) {
     filterEl.addEventListener('input', () => {
       state.filter = filterEl.value;
-      // re-render the page only — keep focus in the input
+      // re-render the page only, keep focus in the input
       const page = $('#page');
       page.innerHTML = renderJobs();
       bindJobs();
@@ -295,7 +295,7 @@ function renderForm() {
       <div class="field toggles">
         <label class="toggle-row">
           <span class="toggle"><input type="checkbox" id="f-startup" ${f.runOnStartup ? 'checked' : ''}/><span class="slider"></span></span>
-          <span>Run when Crontab launches</span>
+          <span>Run when Window Crontab launches</span>
         </label>
         <label class="toggle-row">
           <span class="toggle"><input type="checkbox" id="f-concurrent" ${f.allowConcurrent ? 'checked' : ''}/><span class="slider"></span></span>
@@ -395,7 +395,7 @@ function bindForm() {
     } catch (e) {
       f.error = String(e);
       $('#f-error').textContent = f.error;
-      // schedule errors come from cron_validate — highlight the schedule field too
+      // schedule errors come from cron_validate, highlight the schedule field too
       schedEl.classList.add('is-invalid');
     }
   });
@@ -491,7 +491,7 @@ function renderSettings() {
 
       <div class="card">
         <h3 class="card-title">Files</h3>
-        <p class="card-help">Config is hot-reloaded — changes on disk are picked up automatically.</p>
+        <p class="card-help">Config is hot-reloaded. Changes on disk are picked up at the next minute boundary.</p>
         <div class="row" style="margin-top:10px;">
           <button class="btn btn-secondary" id="s-open-config">Open config file</button>
           <button class="btn btn-secondary" id="s-open-logs">Open logs folder</button>
@@ -501,9 +501,9 @@ function renderSettings() {
 
       <div class="card">
         <h3 class="card-title">App</h3>
-        <p class="card-help">Quit Crontab and stop scheduling. Use <span class="kbd">Ctrl+W</span> to hide instead.</p>
+        <p class="card-help">Quit Window Crontab and stop scheduling. Use <span class="kbd">Ctrl+W</span> to hide instead.</p>
         <div class="row" style="margin-top:10px;">
-          <button class="btn btn-danger btn-secondary" id="s-quit" style="border-color:var(--danger);color:var(--danger);">Quit Crontab</button>
+          <button class="btn btn-danger btn-secondary" id="s-quit" style="border-color:var(--danger);color:var(--danger);">Quit Window Crontab</button>
         </div>
       </div>
     </div>`;
@@ -515,7 +515,7 @@ function bindSettings() {
       await invoke('set_autostart', { enabled: e.target.checked });
       toast(e.target.checked ? 'autostart enabled' : 'autostart disabled');
     } catch (err) {
-      toast(`autostart error — ${err}`, true);
+      toast(`autostart error: ${err}`, true);
       e.target.checked = !e.target.checked;
     }
   });
@@ -535,26 +535,26 @@ function bindSettings() {
 
 /* === Keyboard === */
 document.addEventListener('keydown', (e) => {
-  // Esc — close form, then hide window
+  // Esc closes the form first, then hides the window
   if (e.key === 'Escape') {
     if (state.form.open) { closeForm(); return; }
     invoke('hide_window');
     return;
   }
-  // Ctrl+N — new job
+  // Ctrl+N opens a new job form
   if (e.ctrlKey && (e.key === 'n' || e.key === 'N')) {
     e.preventDefault();
     if (state.tab !== 'jobs') setTab('jobs');
     openFormNew();
     return;
   }
-  // Ctrl+W — hide window
+  // Ctrl+W hides the window
   if (e.ctrlKey && (e.key === 'w' || e.key === 'W')) {
     e.preventDefault();
     invoke('hide_window');
     return;
   }
-  // 1/2/3 — switch tabs (when not typing)
+  // 1/2/3 switch tabs when not typing
   const isTyping = ['INPUT','TEXTAREA'].includes(document.activeElement?.tagName);
   if (!isTyping && (e.key === '1' || e.key === '2' || e.key === '3')) {
     setTab(['jobs','logs','settings'][Number(e.key) - 1]);

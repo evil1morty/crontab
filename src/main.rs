@@ -63,7 +63,7 @@ fn main() {
 
             let _tray = TrayIconBuilder::with_id("main")
                 .menu(&menu)
-                .tooltip("Crontab")
+                .tooltip("Window Crontab")
                 .icon(app.default_window_icon().cloned().unwrap())
                 .on_menu_event(|app, ev| match ev.id.as_ref() {
                     "show" => {

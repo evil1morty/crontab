@@ -2,7 +2,7 @@
 name = "crontab"
 version = "0.2.0"
 edition = "2021"
-description = "Windows tray-resident cron manager"
+description = "A small Windows tray app that runs commands on a schedule"
 license = "MIT"
 repository = "https://github.com/evil1morty/crontab"
 readme = "README.md"
