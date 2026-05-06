@@ -1,17 +1,17 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod autostart;
+mod commands;
 mod config;
 mod cron_parse;
 mod scheduler;
-mod theme;
-mod tray;
-mod ui;
 
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::tray::TrayIconBuilder;
+use tauri::{Emitter, Manager, WindowEvent};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
     let args: Vec<String> = std::env::args().collect();
     let start_hidden = args.iter().any(|a| a == "--hidden");
 
@@ -19,56 +19,118 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = scheduler::SharedState::new(cfg);
     scheduler::spawn(state.clone());
 
-    let show_window = Arc::new(AtomicBool::new(!start_hidden));
-    let quit_flag = Arc::new(AtomicBool::new(false));
+    tauri::Builder::default()
+        .manage(state)
+        .invoke_handler(tauri::generate_handler![
+            commands::list_jobs,
+            commands::save_job,
+            commands::delete_job,
+            commands::toggle_job,
+            commands::run_job_now,
+            commands::list_runs,
+            commands::set_master_enabled,
+            commands::get_master_enabled,
+            commands::is_autostart,
+            commands::set_autostart,
+            commands::open_logs_folder,
+            commands::open_config_file,
+            commands::config_path_str,
+            commands::cron_validate,
+            commands::cron_next,
+            commands::cron_presets,
+            commands::quit_app,
+            commands::hide_window,
+        ])
+        .setup(move |app| {
+            let show = MenuItemBuilder::with_id("show", "Show").build(app)?;
+            let hide = MenuItemBuilder::with_id("hide", "Hide").build(app)?;
+            let pause = MenuItemBuilder::with_id("pause", "Toggle pause all").build(app)?;
+            let logs = MenuItemBuilder::with_id("logs", "Open logs folder").build(app)?;
+            let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
 
-    // Build tray on main thread BEFORE eframe takes the event loop
-    let tray = match tray::build() {
-        Ok(t) => Some(t),
-        Err(e) => {
-            eprintln!("tray init failed: {e}");
-            None
-        }
-    };
+            let menu = MenuBuilder::new(app)
+                .items(&[&show, &hide])
+                .separator()
+                .items(&[&pause, &logs])
+                .separator()
+                .item(&quit)
+                .build()?;
 
-    let native_options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
-            .with_inner_size([720.0, 640.0])
-            .with_min_inner_size([520.0, 480.0])
-            .with_title("Crontab")
-            .with_visible(!start_hidden),
-        ..Default::default()
-    };
+            let _tray = TrayIconBuilder::with_id("main")
+                .menu(&menu)
+                .tooltip("Crontab")
+                .icon(app.default_window_icon().cloned().unwrap())
+                .on_menu_event(|app, ev| match ev.id.as_ref() {
+                    "show" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                        }
+                    }
+                    "hide" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.hide();
+                        }
+                    }
+                    "pause" => {
+                        let state = app.state::<Arc<scheduler::SharedState>>();
+                        let snap = {
+                            let mut cfg = state.config.lock().unwrap();
+                            cfg.master_enabled = !cfg.master_enabled;
+                            cfg.clone()
+                        };
+                        let _ = config::save(&snap);
+                        *state.config_mtime.lock().unwrap() =
+                            config::mtime(&config::config_path());
+                        let _ = app.emit("config-changed", ());
+                    }
+                    "logs" => {
+                        let state = app.state::<Arc<scheduler::SharedState>>();
+                        let dir = {
+                            let cfg = state.config.lock().unwrap();
+                            if cfg.log_dir.is_empty() {
+                                config::default_log_dir()
+                            } else {
+                                std::path::PathBuf::from(&cfg.log_dir)
+                            }
+                        };
+                        std::fs::create_dir_all(&dir).ok();
+                        #[cfg(windows)]
+                        {
+                            let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+                        }
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, ev| {
+                    if let tauri::tray::TrayIconEvent::DoubleClick { .. } = ev {
+                        let app = tray.app_handle();
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
 
-    let state_for_app = state.clone();
-    let show_for_app = show_window.clone();
-    let quit_for_app = quit_flag.clone();
-
-    eframe::run_native(
-        "Crontab",
-        native_options,
-        Box::new(move |cc| {
-            // Wire tray menu events to wake egui directly. This replaces the
-            // old 250 ms repaint heartbeat that was burning ~20% CPU at idle.
-            if let Some(t) = &tray {
-                tray::install_handler(
-                    t,
-                    cc.egui_ctx.clone(),
-                    show_for_app.clone(),
-                    quit_for_app.clone(),
-                    state_for_app.clone(),
-                );
+            if let Some(w) = app.get_webview_window("main") {
+                let w_clone = w.clone();
+                w.on_window_event(move |ev| {
+                    if let WindowEvent::CloseRequested { api, .. } = ev {
+                        api.prevent_close();
+                        let _ = w_clone.hide();
+                    }
+                });
+                if start_hidden {
+                    let _ = w.hide();
+                }
             }
 
-            Ok(Box::new(ui::App::new(
-                state_for_app,
-                show_for_app,
-                quit_for_app,
-                tray,
-                start_hidden,
-            )) as Box<dyn eframe::App>)
-        }),
-    )?;
-
-    Ok(())
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("tauri error");
 }
