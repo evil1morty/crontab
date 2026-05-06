@@ -12,9 +12,22 @@ pub struct Job {
     pub command: String,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_runs: Option<u64>,
+    #[serde(default)]
+    pub runs_count: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_secs: Option<u64>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub allow_concurrent: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub run_on_startup: bool,
 }
 
+fn is_false(b: &bool) -> bool { !*b }
+
 fn default_true() -> bool { true }
+fn default_max_history() -> usize { 200 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -22,6 +35,8 @@ pub struct Config {
     pub master_enabled: bool,
     #[serde(default)]
     pub log_dir: String,
+    #[serde(default = "default_max_history")]
+    pub max_run_history: usize,
     #[serde(default, rename = "job")]
     pub jobs: Vec<Job>,
 }
@@ -31,6 +46,7 @@ impl Default for Config {
         Self {
             master_enabled: true,
             log_dir: default_log_dir().to_string_lossy().to_string(),
+            max_run_history: default_max_history(),
             jobs: vec![],
         }
     }

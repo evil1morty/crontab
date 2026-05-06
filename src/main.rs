@@ -18,6 +18,7 @@ fn main() {
     let cfg = config::load().unwrap_or_default();
     let state = scheduler::SharedState::new(cfg);
     scheduler::spawn(state.clone());
+    scheduler::fire_startup_jobs(state.clone());
 
     tauri::Builder::default()
         .manage(state)
@@ -38,6 +39,10 @@ fn main() {
             commands::cron_validate,
             commands::cron_next,
             commands::cron_presets,
+            commands::reset_runs_count,
+            commands::get_max_run_history,
+            commands::set_max_run_history,
+            commands::view_job_log,
             commands::quit_app,
             commands::hide_window,
         ])

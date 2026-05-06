@@ -15,6 +15,25 @@
   --success-soft: rgba(53, 211, 153, 0.16);
   --danger: #ff5c7a;
   --danger-soft: rgba(255, 92, 122, 0.16);
+}
+
+/* Light mode — the same Stitch design language inverted for paper-on-ink. */
+[data-theme="light"] {
+  --bg: #f5f6f9;
+  --surface: #ffffff;
+  --surface-2: #eef0f5;
+  --border: #e3e6ed;
+  --border-strong: #cdd2dc;
+  --text: #131520;
+  --muted: #5a6172;
+  --muted-2: #8a91a3;
+  --accent: #6c4dff;
+  --accent-soft: rgba(108, 77, 255, 0.10);
+  --accent-soft-2: rgba(108, 77, 255, 0.20);
+  --success: #0fae7a;
+  --success-soft: rgba(15, 174, 122, 0.12);
+  --danger: #e23a5b;
+  --danger-soft: rgba(226, 58, 91, 0.12);
   --radius-sm: 6px;
   --radius: 8px;
   --radius-lg: 12px;
@@ -214,6 +233,12 @@ button:focus-visible, .toggle:focus-within .slider, .checkbox-row:focus-within i
   letter-spacing: -0.01em;
 }
 .topbar-actions { display: flex; gap: 8px; align-items: center; }
+.topbar-right { display: flex; gap: 6px; align-items: center; }
+
+.theme-toggle [data-icon="sun"] { display: none; }
+.theme-toggle [data-icon="moon"] { display: block; }
+[data-theme="light"] .theme-toggle [data-icon="sun"] { display: block; }
+[data-theme="light"] .theme-toggle [data-icon="moon"] { display: none; }
 
 .page {
   flex: 1;
@@ -285,6 +310,80 @@ button:focus-visible, .toggle:focus-within .slider, .checkbox-row:focus-within i
   white-space: nowrap;
 }
 .cron-pill.is-invalid { background: var(--danger-soft); color: var(--danger); }
+.count-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 99px;
+  white-space: nowrap;
+}
+.count-pill.is-exhausted { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
+.count-pill.is-muted { padding: 1px 7px; font-size: 10.5px; }
+.count-pill.is-running {
+  background: var(--success-soft);
+  color: var(--success);
+  border-color: transparent;
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+.count-pill .dot-inline {
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--success);
+  animation: pulse 1.4s var(--ease) infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.3); }
+}
+
+.exit-pill.muted { background: var(--surface-2); color: var(--muted); }
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.filter-input {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.filter-input svg {
+  position: absolute;
+  left: 12px;
+  color: var(--muted-2);
+  pointer-events: none;
+}
+.filter-input input {
+  width: 100%;
+  padding: 8px 12px 8px 34px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: border-color var(--duration) var(--ease);
+}
+.filter-input input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
 .job-cmd {
   margin-top: 8px;
   padding: 8px 10px;
@@ -364,7 +463,7 @@ button:focus-visible, .toggle:focus-within .slider, .checkbox-row:focus-within i
 .input:focus, .textarea:focus { border-color: var(--accent); }
 .input.is-mono, .textarea.is-mono { font-family: var(--font-mono); font-size: 12.5px; }
 .textarea { min-height: 64px; resize: vertical; }
-.input.is-invalid { border-color: var(--danger); }
+.input.is-invalid, .textarea.is-invalid { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
 
 /* === Form === */
 .form-card {
@@ -384,6 +483,18 @@ button:focus-visible, .toggle:focus-within .slider, .checkbox-row:focus-within i
   margin: 0;
 }
 .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.form-actions { padding-top: 14px; margin-top: 4px; border-top: 1px solid var(--border); }
+.toggles { gap: 10px; }
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  user-select: none;
+}
+.toggle-row .toggle { flex-shrink: 0; }
 .preset-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .preset-label { font-size: 11px; color: var(--muted-2); margin-right: 4px; }
 .chip {

@@ -1,17 +1,32 @@
 use crate::config::{self, Config};
 use crate::cron_parse;
 use chrono::{DateTime, Local, Timelike};
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
+
+/// Sentinel exit code emitted when a job is killed for exceeding its timeout.
+pub const EXIT_TIMEOUT: i32 = -2;
+/// Sentinel exit code emitted when a job is skipped because a previous run is still alive.
+pub const EXIT_SKIPPED: i32 = -3;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunEntry {
+    pub name: String,
+    pub when: DateTime<Local>,
+    pub exit_code: i32,
+}
 
 pub struct SharedState {
     pub config: Mutex<Config>,
     pub config_mtime: Mutex<Option<SystemTime>>,
-    pub last_runs: Mutex<Vec<(String, DateTime<Local>, i32)>>, // (name, when, exit_code or -1)
+    pub last_runs: Mutex<Vec<RunEntry>>,
+    pub running: Mutex<HashSet<String>>,
 }
 
 impl SharedState {
@@ -19,13 +34,53 @@ impl SharedState {
         Arc::new(Self {
             config: Mutex::new(cfg),
             config_mtime: Mutex::new(config::mtime(&config::config_path())),
-            last_runs: Mutex::new(Vec::new()),
+            last_runs: Mutex::new(load_history()),
+            running: Mutex::new(HashSet::new()),
         })
+    }
+}
+
+fn history_path() -> Option<PathBuf> {
+    directories::ProjectDirs::from("", "", "claude-cron")
+        .map(|pd| pd.data_local_dir().join("history.json"))
+}
+
+fn load_history() -> Vec<RunEntry> {
+    let Some(path) = history_path() else { return Vec::new() };
+    let Ok(text) = fs::read_to_string(&path) else { return Vec::new() };
+    serde_json::from_str(&text).unwrap_or_default()
+}
+
+fn save_history(runs: &[RunEntry]) {
+    if let Some(path) = history_path() {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).ok();
+        }
+        if let Ok(text) = serde_json::to_string(runs) {
+            let _ = fs::write(&path, text);
+        }
     }
 }
 
 pub fn spawn(state: Arc<SharedState>) {
     thread::spawn(move || run_loop(state));
+}
+
+/// Fire any jobs marked `run_on_startup` once, right at app launch.
+pub fn fire_startup_jobs(state: Arc<SharedState>) {
+    let cfg = state.config.lock().unwrap().clone();
+    if !cfg.master_enabled {
+        return;
+    }
+    let log_dir = if cfg.log_dir.is_empty() {
+        config::default_log_dir()
+    } else {
+        PathBuf::from(&cfg.log_dir)
+    };
+    fs::create_dir_all(&log_dir).ok();
+    for job in cfg.jobs.iter().filter(|j| j.enabled && j.run_on_startup) {
+        fire(job, &log_dir, state.clone());
+    }
 }
 
 fn run_loop(state: Arc<SharedState>) {
@@ -65,10 +120,34 @@ fn run_loop(state: Arc<SharedState>) {
 
         for job in cfg.jobs.iter().filter(|j| j.enabled) {
             if cron_parse::fired_in_minute(&job.schedule, minute_start) {
+                // Skip if a previous run is still alive (unless allow_concurrent).
+                if !job.allow_concurrent {
+                    let running = state.running.lock().unwrap();
+                    if running.contains(&job.name) {
+                        drop(running);
+                        record_run(&state, &job.name, EXIT_SKIPPED);
+                        continue;
+                    }
+                }
                 fire(job, &log_dir, state.clone());
             }
         }
     }
+}
+
+fn record_run(state: &Arc<SharedState>, name: &str, exit_code: i32) {
+    let entry = RunEntry { name: name.to_string(), when: Local::now(), exit_code };
+    let snapshot = {
+        let mut runs = state.last_runs.lock().unwrap();
+        runs.push(entry);
+        let cap = state.config.lock().unwrap().max_run_history.max(1);
+        let len = runs.len();
+        if len > cap {
+            runs.drain(0..len - cap);
+        }
+        runs.clone()
+    };
+    save_history(&snapshot);
 }
 
 pub fn fire(job: &crate::config::Job, log_dir: &std::path::Path, state: Arc<SharedState>) {
@@ -88,14 +167,24 @@ pub fn fire(job: &crate::config::Job, log_dir: &std::path::Path, state: Arc<Shar
     let cmd_str = job.command.clone();
     let name = job.name.clone();
     let log_clone = log_path.clone();
+    let timeout_secs = job.timeout_secs;
+
+    // Mark as running BEFORE we spawn the thread so the next-minute tick
+    // sees it, even if scheduling was racy.
+    state.running.lock().unwrap().insert(name.clone());
+
     thread::spawn(move || {
         let stdout = OpenOptions::new().create(true).append(true).open(&log_clone).ok();
         let stderr = OpenOptions::new().create(true).append(true).open(&log_clone).ok();
 
         #[cfg(windows)]
         let mut cmd = {
+            // raw_arg lets cmd.exe's own /C parser handle the wrapping quotes.
+            // Without this, std's arg() backslash-escapes inner quotes and they
+            // leak into the child's argv.
+            use std::os::windows::process::CommandExt;
             let mut c = Command::new("cmd");
-            c.arg("/C").arg(&cmd_str);
+            c.raw_arg("/C").raw_arg(format!("\"{}\"", &cmd_str));
             c
         };
         #[cfg(not(windows))]
@@ -116,10 +205,30 @@ pub fn fire(job: &crate::config::Job, log_dir: &std::path::Path, state: Arc<Shar
         }
 
         let exit_code = match cmd.spawn() {
-            Ok(mut child) => match child.wait() {
-                Ok(s) => s.code().unwrap_or(-1),
-                Err(_) => -1,
-            },
+            Ok(mut child) => {
+                let started = Instant::now();
+                loop {
+                    match child.try_wait() {
+                        Ok(Some(s)) => break s.code().unwrap_or(-1),
+                        Ok(None) => {
+                            if let Some(timeout) = timeout_secs {
+                                if started.elapsed() >= Duration::from_secs(timeout) {
+                                    let _ = child.kill();
+                                    let _ = child.wait();
+                                    if let Ok(f) = OpenOptions::new().create(true).append(true).open(&log_clone) {
+                                        use std::io::Write;
+                                        let mut f = f;
+                                        let _ = writeln!(f, "[killed — timed out after {timeout}s]");
+                                    }
+                                    break EXIT_TIMEOUT;
+                                }
+                            }
+                            thread::sleep(Duration::from_millis(200));
+                        }
+                        Err(_) => break -1,
+                    }
+                }
+            }
             Err(e) => {
                 if let Ok(f) = OpenOptions::new().create(true).append(true).open(&log_clone) {
                     use std::io::Write;
@@ -130,17 +239,36 @@ pub fn fire(job: &crate::config::Job, log_dir: &std::path::Path, state: Arc<Shar
             }
         };
 
-        let mut runs = state.last_runs.lock().unwrap();
-        runs.push((name, Local::now(), exit_code));
-        // keep only last 50
-        let len = runs.len();
-        if len > 50 {
-            runs.drain(0..len - 50);
+        // Drop the running marker first so the next tick can fire even before
+        // we finish persisting.
+        state.running.lock().unwrap().remove(&name);
+
+        record_run(&state, &name, exit_code);
+
+        // Increment per-job runs_count and auto-disable if max_runs reached
+        let snap = {
+            let mut cfg = state.config.lock().unwrap();
+            let mut changed = false;
+            if let Some(j) = cfg.jobs.iter_mut().find(|j| j.name == name) {
+                j.runs_count = j.runs_count.saturating_add(1);
+                changed = true;
+                if let Some(max) = j.max_runs {
+                    if j.runs_count >= max {
+                        j.enabled = false;
+                    }
+                }
+            }
+            if changed { Some(cfg.clone()) } else { None }
+        };
+        if let Some(snap) = snap {
+            if config::save(&snap).is_ok() {
+                *state.config_mtime.lock().unwrap() = config::mtime(&config::config_path());
+            }
         }
     });
 }
 
-fn sanitize(name: &str) -> String {
+pub fn sanitize(name: &str) -> String {
     name.chars()
         .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
         .collect()
