@@ -37,7 +37,7 @@ pub fn build() -> Result<TrayHandles> {
 
     let tray = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
-        .with_tooltip("Claude Cron")
+        .with_tooltip("Crontab")
         .with_icon(icon)
         .build()?;
 

@@ -35,7 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([720.0, 640.0])
             .with_min_inner_size([520.0, 480.0])
-            .with_title("Claude Cron")
+            .with_title("Crontab")
             .with_visible(!start_hidden),
         ..Default::default()
     };
@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let quit_for_app = quit_flag.clone();
 
     eframe::run_native(
-        "Claude Cron",
+        "Crontab",
         native_options,
         Box::new(move |cc| {
             // Wire tray menu events to wake egui directly. This replaces the

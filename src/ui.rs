@@ -180,9 +180,13 @@ impl eframe::App for App {
             std::process::exit(0);
         }
 
-        // When hidden, draw nothing and do not schedule any repaints. Tray
-        // menu clicks wake the event loop via the global MenuEvent handler.
+        // While hidden, draw nothing but keep a slow 1Hz pulse so tray
+        // commands (Show / Quit) get picked up. ctx.request_repaint() from
+        // the MenuEvent handler is unreliable once winit has marked the
+        // viewport invisible, so we poll the flag instead. 1Hz is effectively
+        // free CPU-wise compared to the old 4Hz heartbeat.
         if !want_visible {
+            ctx.request_repaint_after(std::time::Duration::from_secs(1));
             return;
         }
 
@@ -196,7 +200,7 @@ impl eframe::App for App {
             .frame(egui::Frame::none().fill(Color32::from_rgb(28, 31, 38)).inner_margin(egui::Margin::symmetric(16.0, 10.0)))
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
-                    ui.label(RichText::new("⏱  Claude Cron").size(18.0).strong());
+                    ui.label(RichText::new("⏱  Crontab").size(18.0).strong());
                     ui.add_space(20.0);
 
                     tab_button(ui, &mut self.tab, Tab::Jobs, "Jobs");
@@ -575,7 +579,7 @@ impl App {
                 ui.add_space(4.0);
                 if ui
                     .add(
-                        egui::Button::new(RichText::new("Quit Claude Cron").color(Color32::WHITE))
+                        egui::Button::new(RichText::new("Quit Crontab").color(Color32::WHITE))
                             .fill(theme::DANGER)
                             .rounding(Rounding::same(8.0)),
                     )
