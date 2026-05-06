@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2.0" --locked
+
+      - name: Build (cargo tauri build → exe + msi)
+        run: cargo tauri build
+
+      - name: Upload portable .exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: crontab-portable
+          path: target/release/crontab.exe
+
+      - name: Upload .msi installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: crontab-msi
+          path: target/release/bundle/msi/*.msi
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          files: |
+            target/release/crontab.exe
+            target/release/bundle/msi/*.msi
