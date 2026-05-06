@@ -182,10 +182,10 @@ function jobCard(j) {
         <span class="${cronClass}">${escHtml(j.schedule)}</span>
         ${pills}
         <div class="job-actions">
-          <button class="btn btn-icon btn-ghost" data-action="run" title="Run now">${SVG.play}</button>
-          <button class="btn btn-icon btn-ghost" data-action="output" title="View output">${SVG.output}</button>
-          <button class="btn btn-icon btn-ghost" data-action="edit" title="Edit">${SVG.edit}</button>
-          <button class="btn btn-icon btn-danger" data-action="delete" title="Delete">${SVG.trash}</button>
+          <button class="btn btn-icon btn-ghost" data-action="run" title="Run now" aria-label="Run now">${SVG.play}</button>
+          <button class="btn btn-icon btn-ghost" data-action="output" title="View output" aria-label="View output log">${SVG.output}</button>
+          <button class="btn btn-icon btn-ghost" data-action="edit" title="Edit" aria-label="Edit job">${SVG.edit}</button>
+          <button class="btn btn-icon btn-danger" data-action="delete" title="Delete" aria-label="Delete job">${SVG.trash}</button>
         </div>
       </div>
       <div class="job-cmd">${escHtml(j.command)}</div>
@@ -565,11 +565,18 @@ document.addEventListener('keydown', (e) => {
 listen('jobs-changed', () => { if (state.tab === 'jobs') render(); });
 listen('config-changed', () => { loadMaster(); });
 
-// Refresh "next run" labels every 30s and logs every 5s while visible.
+// Re-render the visible tab every 5s so "next run in Xm" stays fresh and
+// finished jobs disappear from the running set. Skipped when:
+//  - window is hidden (browsers report this even when a Tauri webview is
+//    minimized to tray on most platforms)
+//  - the form is open (don't blow away in-flight typing)
+//  - the user is typing in the search filter (full re-render would steal
+//    focus and the caret position mid-keystroke)
 setInterval(() => {
   if (document.hidden) return;
-  if (state.tab === 'jobs' && !state.form.open) render();
-  if (state.tab === 'logs') render();
+  if (state.form.open) return;
+  if (document.activeElement && document.activeElement.id === 'jobs-filter') return;
+  if (state.tab === 'jobs' || state.tab === 'logs') render();
 }, 5000);
 
 /* === Theme === */

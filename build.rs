@@ -51,7 +51,11 @@ fn make_buf(size: u32) -> RgbaImage {
             let dy = y as f32 - cy;
             let d2 = dx * dx + dy * dy;
             let p = if d2 <= r_outer_sq {
-                if d2 <= r_inner_sq { dark } else { violet }
+                if d2 <= r_inner_sq {
+                    dark
+                } else {
+                    violet
+                }
             } else {
                 clear
             };

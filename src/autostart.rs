@@ -1,3 +1,8 @@
+//! Tiny wrapper around `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+//! for "start with Windows" support. The value is the quoted exe path
+//! followed by `--hidden`, so the app boots into the tray rather than
+//! popping a window on every login.
+
 #[cfg(windows)]
 use anyhow::Result;
 #[cfg(windows)]
@@ -39,8 +44,14 @@ pub fn disable() -> Result<()> {
 }
 
 #[cfg(not(windows))]
-pub fn is_enabled() -> bool { false }
+pub fn is_enabled() -> bool {
+    false
+}
 #[cfg(not(windows))]
-pub fn enable(_: &str) -> anyhow::Result<()> { Ok(()) }
+pub fn enable(_: &str) -> anyhow::Result<()> {
+    Ok(())
+}
 #[cfg(not(windows))]
-pub fn disable() -> anyhow::Result<()> { Ok(()) }
+pub fn disable() -> anyhow::Result<()> {
+    Ok(())
+}

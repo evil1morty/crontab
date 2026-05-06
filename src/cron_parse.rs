@@ -1,9 +1,15 @@
+//! Thin wrapper over the `cron` crate that accepts classic 5-field
+//! expressions and the common `@hourly` / `@daily` / `@weekly` / `@monthly`
+//! / `@yearly` aliases. Internally we always pass the crate a 7-field
+//! string so the parser is happy.
+
 use chrono::{DateTime, Local};
 use cron::Schedule;
 use std::str::FromStr;
 
-/// Cron crate uses 6 or 7 fields (with seconds). User writes classic 5-field cron.
-/// Prepend "0" so users see the familiar 5-field syntax.
+/// `cron` expects 6 or 7 fields with seconds first; users write the classic
+/// 5-field form. Prepend a `0` for the seconds slot and append `*` for year
+/// so we accept both flavors without surprising the user.
 fn normalize(expr: &str) -> String {
     let trimmed = expr.trim();
     match trimmed {
@@ -25,7 +31,9 @@ fn normalize(expr: &str) -> String {
 
 pub fn validate(expr: &str) -> Result<(), String> {
     let n = normalize(expr);
-    Schedule::from_str(&n).map(|_| ()).map_err(|e| e.to_string())
+    Schedule::from_str(&n)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 pub fn next_run(expr: &str, after: DateTime<Local>) -> Option<DateTime<Local>> {

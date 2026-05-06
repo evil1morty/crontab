@@ -1,3 +1,12 @@
+//! TOML-backed config (jobs + global settings).
+//!
+//! Lives at `%APPDATA%\claude-cron\config\crontab.toml` on Windows. The
+//! scheduler watches the file's mtime and hot-reloads when it changes, so
+//! editing the TOML directly is supported and intentional.
+//!
+//! All new fields use `#[serde(default)]` so an older config keeps loading
+//! after an app upgrade.
+
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
@@ -24,10 +33,16 @@ pub struct Job {
     pub run_on_startup: bool,
 }
 
-fn is_false(b: &bool) -> bool { !*b }
+fn is_false(b: &bool) -> bool {
+    !*b
+}
 
-fn default_true() -> bool { true }
-fn default_max_history() -> usize { 200 }
+fn default_true() -> bool {
+    true
+}
+fn default_max_history() -> usize {
+    200
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -77,10 +92,8 @@ pub fn load() -> Result<Config> {
         save(&cfg)?;
         return Ok(cfg);
     }
-    let text = fs::read_to_string(&path)
-        .with_context(|| format!("read {}", path.display()))?;
-    let cfg: Config = toml::from_str(&text)
-        .with_context(|| format!("parse {}", path.display()))?;
+    let text = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let cfg: Config = toml::from_str(&text).with_context(|| format!("parse {}", path.display()))?;
     Ok(cfg)
 }
 

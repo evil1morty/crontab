@@ -1,4 +1,7 @@
-use crate::{autostart, config, cron_parse, scheduler::{self, SharedState}};
+use crate::{
+    autostart, config, cron_parse,
+    scheduler::{self, SharedState},
+};
 use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -49,7 +52,7 @@ pub fn list_jobs(state: State<'_, Arc<SharedState>>) -> Vec<JobView> {
         .enumerate()
         .map(|(i, j)| {
             let next = cron_parse::next_run(&j.schedule, now);
-            let exhausted = j.max_runs.map_or(false, |m| j.runs_count >= m);
+            let exhausted = j.max_runs.is_some_and(|m| j.runs_count >= m);
             JobView {
                 index: i,
                 name: j.name.clone(),
@@ -91,7 +94,11 @@ pub fn save_job(
             Some(i) if i < cfg.jobs.len() => {
                 // preserve enabled + runs_count, but reset count if max_runs changes
                 let prev = cfg.jobs[i].clone();
-                let count = if prev.max_runs != job.max_runs { 0 } else { prev.runs_count };
+                let count = if prev.max_runs != job.max_runs {
+                    0
+                } else {
+                    prev.runs_count
+                };
                 cfg.jobs[i] = config::Job {
                     name: job.name.trim().to_string(),
                     schedule: job.schedule.trim().to_string(),
@@ -351,10 +358,7 @@ pub fn get_max_run_history(state: State<'_, Arc<SharedState>>) -> usize {
 }
 
 #[tauri::command]
-pub fn set_max_run_history(
-    state: State<'_, Arc<SharedState>>,
-    value: usize,
-) -> Result<(), String> {
+pub fn set_max_run_history(state: State<'_, Arc<SharedState>>, value: usize) -> Result<(), String> {
     if value == 0 {
         return Err("must be at least 1".into());
     }
@@ -380,7 +384,10 @@ pub fn set_max_run_history(
 pub fn view_job_log(state: State<'_, Arc<SharedState>>, index: usize) -> Result<(), String> {
     let (job_name, log_dir) = {
         let cfg = state.config.lock().unwrap();
-        let job = cfg.jobs.get(index).ok_or_else(|| "index out of range".to_string())?;
+        let job = cfg
+            .jobs
+            .get(index)
+            .ok_or_else(|| "index out of range".to_string())?;
         let log_dir = if cfg.log_dir.is_empty() {
             config::default_log_dir()
         } else {

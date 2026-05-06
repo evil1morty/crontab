@@ -2,10 +2,15 @@
 name = "crontab"
 version = "0.2.0"
 edition = "2021"
+rust-version = "1.77"
 description = "A small Windows tray app that runs commands on a schedule"
 license = "MIT"
 repository = "https://github.com/evil1morty/crontab"
 readme = "README.md"
+keywords = ["cron", "scheduler", "tauri", "tray", "windows"]
+categories = ["command-line-utilities", "gui"]
+authors = ["evil1morty"]
+default-run = "crontab"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -86,8 +86,7 @@ fn main() {
                             cfg.clone()
                         };
                         let _ = config::save(&snap);
-                        *state.config_mtime.lock().unwrap() =
-                            config::mtime(&config::config_path());
+                        *state.config_mtime.lock().unwrap() = config::mtime(&config::config_path());
                         let _ = app.emit("config-changed", ());
                     }
                     "logs" => {
