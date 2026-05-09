@@ -45,8 +45,8 @@ pub struct JobInput {
 #[tauri::command]
 pub fn list_jobs(state: State<'_, Arc<SharedState>>) -> Vec<JobView> {
     let now = Local::now();
-    let cfg = state.config.lock().unwrap();
-    let running = state.running.lock().unwrap();
+    let cfg = state.config.lock().expect("state mutex poisoned");
+    let running = state.running.lock().expect("state mutex poisoned");
     cfg.jobs
         .iter()
         .enumerate()
@@ -89,7 +89,7 @@ pub fn save_job(
         return Err("command is required".into());
     }
     let snap = {
-        let mut cfg = state.config.lock().unwrap();
+        let mut cfg = state.config.lock().expect("state mutex poisoned");
         match index {
             Some(i) if i < cfg.jobs.len() => {
                 // preserve enabled + runs_count, but reset count if max_runs changes
@@ -126,7 +126,8 @@ pub fn save_job(
         cfg.clone()
     };
     config::save(&snap).map_err(|e| e.to_string())?;
-    *state.config_mtime.lock().unwrap() = config::mtime(&config::config_path());
+    *state.config_mtime.lock().expect("state mutex poisoned") =
+        config::mtime(&config::config_path());
     let _ = app.emit("jobs-changed", ());
     Ok(())
 }
@@ -138,7 +139,7 @@ pub fn delete_job(
     index: usize,
 ) -> Result<(), String> {
     let snap = {
-        let mut cfg = state.config.lock().unwrap();
+        let mut cfg = state.config.lock().expect("state mutex poisoned");
         if index >= cfg.jobs.len() {
             return Err("index out of range".into());
         }
@@ -146,7 +147,8 @@ pub fn delete_job(
         cfg.clone()
     };
     config::save(&snap).map_err(|e| e.to_string())?;
-    *state.config_mtime.lock().unwrap() = config::mtime(&config::config_path());
+    *state.config_mtime.lock().expect("state mutex poisoned") =
+        config::mtime(&config::config_path());
     let _ = app.emit("jobs-changed", ());
     Ok(())
 }
@@ -159,7 +161,7 @@ pub fn toggle_job(
     enabled: bool,
 ) -> Result<(), String> {
     let snap = {
-        let mut cfg = state.config.lock().unwrap();
+        let mut cfg = state.config.lock().expect("state mutex poisoned");
         if index >= cfg.jobs.len() {
             return Err("index out of range".into());
         }
@@ -167,7 +169,8 @@ pub fn toggle_job(
         cfg.clone()
     };
     config::save(&snap).map_err(|e| e.to_string())?;
-    *state.config_mtime.lock().unwrap() = config::mtime(&config::config_path());
+    *state.config_mtime.lock().expect("state mutex poisoned") =
+        config::mtime(&config::config_path());
     let _ = app.emit("jobs-changed", ());
     Ok(())
 }
@@ -175,7 +178,7 @@ pub fn toggle_job(
 #[tauri::command]
 pub fn run_job_now(state: State<'_, Arc<SharedState>>, index: usize) -> Result<String, String> {
     let (job, log_dir) = {
-        let cfg = state.config.lock().unwrap();
+        let cfg = state.config.lock().expect("state mutex poisoned");
         let job = cfg
             .jobs
             .get(index)
@@ -213,7 +216,7 @@ fn status_for(code: i32) -> &'static str {
 
 #[tauri::command]
 pub fn list_runs(state: State<'_, Arc<SharedState>>) -> Vec<RunView> {
-    let runs = state.last_runs.lock().unwrap();
+    let runs = state.last_runs.lock().expect("state mutex poisoned");
     runs.iter()
         .rev()
         .map(|e| RunView {
@@ -232,19 +235,24 @@ pub fn set_master_enabled(
     enabled: bool,
 ) -> Result<(), String> {
     let snap = {
-        let mut cfg = state.config.lock().unwrap();
+        let mut cfg = state.config.lock().expect("state mutex poisoned");
         cfg.master_enabled = enabled;
         cfg.clone()
     };
     config::save(&snap).map_err(|e| e.to_string())?;
-    *state.config_mtime.lock().unwrap() = config::mtime(&config::config_path());
+    *state.config_mtime.lock().expect("state mutex poisoned") =
+        config::mtime(&config::config_path());
     let _ = app.emit("config-changed", ());
     Ok(())
 }
 
 #[tauri::command]
 pub fn get_master_enabled(state: State<'_, Arc<SharedState>>) -> bool {
-    state.config.lock().unwrap().master_enabled
+    state
+        .config
+        .lock()
+        .expect("state mutex poisoned")
+        .master_enabled
 }
 
 #[tauri::command]
@@ -268,7 +276,7 @@ pub fn set_autostart(enabled: bool) -> Result<(), String> {
 #[tauri::command]
 pub fn open_logs_folder(state: State<'_, Arc<SharedState>>) {
     let dir = {
-        let cfg = state.config.lock().unwrap();
+        let cfg = state.config.lock().expect("state mutex poisoned");
         if cfg.log_dir.is_empty() {
             config::default_log_dir()
         } else {
@@ -339,7 +347,7 @@ pub fn reset_runs_count(
     index: usize,
 ) -> Result<(), String> {
     let snap = {
-        let mut cfg = state.config.lock().unwrap();
+        let mut cfg = state.config.lock().expect("state mutex poisoned");
         if index >= cfg.jobs.len() {
             return Err("index out of range".into());
         }
@@ -347,14 +355,19 @@ pub fn reset_runs_count(
         cfg.clone()
     };
     config::save(&snap).map_err(|e| e.to_string())?;
-    *state.config_mtime.lock().unwrap() = config::mtime(&config::config_path());
+    *state.config_mtime.lock().expect("state mutex poisoned") =
+        config::mtime(&config::config_path());
     let _ = app.emit("jobs-changed", ());
     Ok(())
 }
 
 #[tauri::command]
 pub fn get_max_run_history(state: State<'_, Arc<SharedState>>) -> usize {
-    state.config.lock().unwrap().max_run_history
+    state
+        .config
+        .lock()
+        .expect("state mutex poisoned")
+        .max_run_history
 }
 
 #[tauri::command]
@@ -363,27 +376,28 @@ pub fn set_max_run_history(state: State<'_, Arc<SharedState>>, value: usize) -> 
         return Err("must be at least 1".into());
     }
     let snap = {
-        let mut cfg = state.config.lock().unwrap();
+        let mut cfg = state.config.lock().expect("state mutex poisoned");
         cfg.max_run_history = value;
         cfg.clone()
     };
     // Trim in-memory list immediately
     {
-        let mut runs = state.last_runs.lock().unwrap();
+        let mut runs = state.last_runs.lock().expect("state mutex poisoned");
         let len = runs.len();
         if len > value {
             runs.drain(0..len - value);
         }
     }
     config::save(&snap).map_err(|e| e.to_string())?;
-    *state.config_mtime.lock().unwrap() = config::mtime(&config::config_path());
+    *state.config_mtime.lock().expect("state mutex poisoned") =
+        config::mtime(&config::config_path());
     Ok(())
 }
 
 #[tauri::command]
 pub fn view_job_log(state: State<'_, Arc<SharedState>>, index: usize) -> Result<(), String> {
     let (job_name, log_dir) = {
-        let cfg = state.config.lock().unwrap();
+        let cfg = state.config.lock().expect("state mutex poisoned");
         let job = cfg
             .jobs
             .get(index)

@@ -81,18 +81,19 @@ fn main() {
                     "pause" => {
                         let state = app.state::<Arc<scheduler::SharedState>>();
                         let snap = {
-                            let mut cfg = state.config.lock().unwrap();
+                            let mut cfg = state.config.lock().expect("state mutex poisoned");
                             cfg.master_enabled = !cfg.master_enabled;
                             cfg.clone()
                         };
                         let _ = config::save(&snap);
-                        *state.config_mtime.lock().unwrap() = config::mtime(&config::config_path());
+                        *state.config_mtime.lock().expect("state mutex poisoned") =
+                            config::mtime(&config::config_path());
                         let _ = app.emit("config-changed", ());
                     }
                     "logs" => {
                         let state = app.state::<Arc<scheduler::SharedState>>();
                         let dir = {
-                            let cfg = state.config.lock().unwrap();
+                            let cfg = state.config.lock().expect("state mutex poisoned");
                             if cfg.log_dir.is_empty() {
                                 config::default_log_dir()
                             } else {

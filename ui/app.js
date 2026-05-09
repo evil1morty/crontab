@@ -46,6 +46,55 @@ function toast(msg, isError = false) {
   toastTimer = setTimeout(() => { t.hidden = true; }, 2200);
 }
 
+/* === Modal confirmation ===
+ * Returns a promise that resolves to true (confirmed) / false (cancelled).
+ * Esc cancels, Enter confirms, click on backdrop cancels.
+ */
+function confirmDialog(message, opts = {}) {
+  const okLabel = opts.okLabel || 'Delete';
+  const danger = opts.danger !== false;
+  const previouslyFocused = document.activeElement;
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-msg">
+        <div class="modal-body" id="modal-msg">${escHtml(message)}</div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" data-act="cancel" type="button">Cancel</button>
+          <button class="btn ${danger ? 'btn-danger btn-confirm-danger' : 'btn-primary'}" data-act="ok" type="button">${escHtml(okLabel)}</button>
+        </div>
+      </div>`;
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(false); }
+      else if (e.key === 'Enter') { e.preventDefault(); close(true); }
+      else if (e.key === 'Tab') {
+        const btns = overlay.querySelectorAll('button');
+        const first = btns[0], last = btns[btns.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+    function close(v) {
+      document.removeEventListener('keydown', onKey, true);
+      overlay.remove();
+      if (previouslyFocused && previouslyFocused.focus) {
+        try { previouslyFocused.focus(); } catch (_) {}
+      }
+      resolve(v);
+    }
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) { close(false); return; }
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act === 'ok') close(true);
+      else if (act === 'cancel') close(false);
+    });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(overlay);
+    overlay.querySelector('[data-act="ok"]').focus();
+  });
+}
+
 /* === Data loaders === */
 async function loadJobs() {
   state.jobs = await invoke('list_jobs');
@@ -217,6 +266,12 @@ function bindJobs() {
       } else if (action === 'edit') {
         openFormEdit(idx);
       } else if (action === 'delete') {
+        const job = state.jobs.find(x => x.index === idx);
+        const ok = await confirmDialog(
+          `Delete "${job?.name ?? 'this job'}"? This can't be undone.`,
+          { okLabel: 'Delete' }
+        );
+        if (!ok) return;
         await invoke('delete_job', { index: idx });
         toast('job deleted');
         render();

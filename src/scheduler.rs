@@ -13,6 +13,10 @@
 //!   `history.json` after every push, so the UI Logs tab survives restart.
 //! - `runs_count` is incremented atomically with the config save that may
 //!   auto-disable the job when its `max_runs` cap is reached.
+//! - Lock order (always): `config` → `running` → `last_runs`. Anywhere we
+//!   need more than one, we acquire in that order to avoid deadlock.
+//! - Global cap `MAX_CONCURRENT_RUNS` prevents misconfigured `* * * * *`
+//!   schedules with slow commands from spawning unbounded threads.
 
 use crate::config::{self, Config};
 use crate::cron_parse;
@@ -30,6 +34,11 @@ use std::time::{Duration, Instant, SystemTime};
 pub const EXIT_TIMEOUT: i32 = -2;
 /// Sentinel exit code emitted when a job is skipped because a previous run is still alive.
 pub const EXIT_SKIPPED: i32 = -3;
+
+/// Hard cap on simultaneously running children. A misconfigured `* * * * *`
+/// with a slow command would otherwise spawn unbounded threads and child
+/// processes; once we hit this we record `EXIT_SKIPPED` instead.
+const MAX_CONCURRENT_RUNS: usize = 64;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunEntry {
@@ -88,7 +97,11 @@ pub fn spawn(state: Arc<SharedState>) {
 
 /// Fire any jobs marked `run_on_startup` once, right at app launch.
 pub fn fire_startup_jobs(state: Arc<SharedState>) {
-    let cfg = state.config.lock().unwrap().clone();
+    let cfg = state
+        .config
+        .lock()
+        .expect("scheduler mutex poisoned")
+        .clone();
     if !cfg.master_enabled {
         return;
     }
@@ -116,17 +129,21 @@ fn run_loop(state: Arc<SharedState>) {
         let path = config::config_path();
         let current_mtime = config::mtime(&path);
         let need_reload = {
-            let saved = state.config_mtime.lock().unwrap();
+            let saved = state.config_mtime.lock().expect("scheduler mutex poisoned");
             *saved != current_mtime
         };
         if need_reload {
             if let Ok(cfg) = config::load() {
-                *state.config.lock().unwrap() = cfg;
-                *state.config_mtime.lock().unwrap() = current_mtime;
+                *state.config.lock().expect("scheduler mutex poisoned") = cfg;
+                *state.config_mtime.lock().expect("scheduler mutex poisoned") = current_mtime;
             }
         }
 
-        let cfg = state.config.lock().unwrap().clone();
+        let cfg = state
+            .config
+            .lock()
+            .expect("scheduler mutex poisoned")
+            .clone();
         if !cfg.master_enabled {
             continue;
         }
@@ -142,7 +159,7 @@ fn run_loop(state: Arc<SharedState>) {
             if cron_parse::fired_in_minute(&job.schedule, minute_start) {
                 // Skip if a previous run is still alive (unless allow_concurrent).
                 if !job.allow_concurrent {
-                    let running = state.running.lock().unwrap();
+                    let running = state.running.lock().expect("scheduler mutex poisoned");
                     if running.contains(&job.name) {
                         drop(running);
                         record_run(&state, &job.name, EXIT_SKIPPED);
@@ -161,10 +178,17 @@ fn record_run(state: &Arc<SharedState>, name: &str, exit_code: i32) {
         when: Local::now(),
         exit_code,
     };
+    // Read cap under the config lock first, then move to last_runs so we
+    // never nest config inside last_runs (lock-order: config → last_runs).
+    let cap = state
+        .config
+        .lock()
+        .expect("config mutex poisoned")
+        .max_run_history
+        .max(1);
     let snapshot = {
-        let mut runs = state.last_runs.lock().unwrap();
+        let mut runs = state.last_runs.lock().expect("last_runs mutex poisoned");
         runs.push(entry);
-        let cap = state.config.lock().unwrap().max_run_history.max(1);
         let len = runs.len();
         if len > cap {
             runs.drain(0..len - cap);
@@ -191,20 +215,28 @@ pub fn fire(job: &crate::config::Job, log_dir: &std::path::Path, state: Arc<Shar
     let timeout_secs = job.timeout_secs;
 
     // Mark as running BEFORE we spawn the thread so the next-minute tick
-    // sees it, even if scheduling was racy.
-    state.running.lock().unwrap().insert(name.clone());
+    // sees it, even if scheduling was racy. Also enforce the global cap
+    // here so the funnel is single-source.
+    {
+        let mut running = state.running.lock().expect("running mutex poisoned");
+        if running.len() >= MAX_CONCURRENT_RUNS {
+            drop(running);
+            record_run(&state, &name, EXIT_SKIPPED);
+            return;
+        }
+        running.insert(name.clone());
+    }
 
     thread::spawn(move || {
+        // Open the log file once and clone the handle for stderr so we don't
+        // hold two distinct kernel file descriptors racing each other in
+        // append mode.
         let stdout = OpenOptions::new()
             .create(true)
             .append(true)
             .open(&log_clone)
             .ok();
-        let stderr = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&log_clone)
-            .ok();
+        let stderr = stdout.as_ref().and_then(|f| f.try_clone().ok());
 
         #[cfg(windows)]
         let mut cmd = {
@@ -282,13 +314,17 @@ pub fn fire(job: &crate::config::Job, log_dir: &std::path::Path, state: Arc<Shar
 
         // Drop the running marker first so the next tick can fire even before
         // we finish persisting.
-        state.running.lock().unwrap().remove(&name);
+        state
+            .running
+            .lock()
+            .expect("scheduler mutex poisoned")
+            .remove(&name);
 
         record_run(&state, &name, exit_code);
 
         // Increment per-job runs_count and auto-disable if max_runs reached
         let snap = {
-            let mut cfg = state.config.lock().unwrap();
+            let mut cfg = state.config.lock().expect("scheduler mutex poisoned");
             let mut changed = false;
             if let Some(j) = cfg.jobs.iter_mut().find(|j| j.name == name) {
                 j.runs_count = j.runs_count.saturating_add(1);
@@ -307,7 +343,8 @@ pub fn fire(job: &crate::config::Job, log_dir: &std::path::Path, state: Arc<Shar
         };
         if let Some(snap) = snap {
             if config::save(&snap).is_ok() {
-                *state.config_mtime.lock().unwrap() = config::mtime(&config::config_path());
+                *state.config_mtime.lock().expect("scheduler mutex poisoned") =
+                    config::mtime(&config::config_path());
             }
         }
     });
