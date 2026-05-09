@@ -1,5 +1,6 @@
-/* === Crontab design tokens (mirrors the Stitch design system) === */
+/* === Crontab design tokens === */
 :root {
+  /* Dark theme colors (default). */
   --bg: #0e0f14;
   --surface: #161821;
   --surface-2: #1c1e28;
@@ -15,9 +16,23 @@
   --success-soft: rgba(53, 211, 153, 0.16);
   --danger: #ff5c7a;
   --danger-soft: rgba(255, 92, 122, 0.16);
+
+  /* Theme-agnostic structure: shape, motion, typography. These must live
+     on :root so dark mode (no data-theme attribute) inherits them too —
+     defining them inside [data-theme="light"] only is what made the dark
+     UI fall back to the webview's built-in default font. */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --duration: 140ms;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --font-body: system-ui, -apple-system, 'Segoe UI Variable', 'Segoe UI', Roboto, sans-serif;
+  --font-head: system-ui, -apple-system, 'Segoe UI Variable', 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
 }
 
-/* Light mode: the same Stitch design language inverted for paper-on-ink. */
+/* Light mode: same design language inverted for paper-on-ink. */
 [data-theme="light"] {
   --bg: #f5f6f9;
   --surface: #ffffff;
@@ -34,37 +49,6 @@
   --success-soft: rgba(15, 174, 122, 0.12);
   --danger: #e23a5b;
   --danger-soft: rgba(226, 58, 91, 0.12);
-  --radius-sm: 6px;
-  --radius: 8px;
-  --radius-lg: 12px;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --duration: 140ms;
-  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
-  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-head: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
-}
-
-@font-face {
-  font-family: 'Inter';
-  font-style: normal;
-  font-weight: 400 700;
-  font-display: swap;
-  src: local('Inter');
-}
-@font-face {
-  font-family: 'Geist';
-  font-style: normal;
-  font-weight: 400 700;
-  font-display: swap;
-  src: local('Geist'), local('Inter');
-}
-@font-face {
-  font-family: 'JetBrains Mono';
-  font-style: normal;
-  font-weight: 400 500;
-  font-display: swap;
-  src: local('JetBrains Mono'), local('Cascadia Mono'), local('Consolas');
 }
 
 * { box-sizing: border-box; }
@@ -76,7 +60,7 @@ html, body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-body);
-  font-size: 13.5px;
+  font-size: 13px;
   line-height: 1.45;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
@@ -154,7 +138,7 @@ button:focus-visible, .toggle:focus-within .slider, .checkbox-row:focus-within i
   background: transparent;
   color: var(--muted);
   font: inherit;
-  font-size: 13.5px;
+  font-size: 13px;
   text-align: left;
   border-radius: var(--radius);
   cursor: pointer;
@@ -624,7 +608,7 @@ button:focus-visible, .toggle:focus-within .slider, .checkbox-row:focus-within i
 }
 .modal-body {
   color: var(--text);
-  font-size: 13.5px;
+  font-size: 13px;
   margin-bottom: 16px;
   user-select: text;
 }
