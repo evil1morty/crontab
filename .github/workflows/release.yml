@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+env:
+  # Opt JS-based actions into Node 24 ahead of the June 2026 forced switch.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-windows:
     name: Build Windows release
@@ -24,8 +28,10 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2.0" --locked
+      - name: Install Tauri CLI (prebuilt binary)
+        uses: taiki-e/install-action@v2
+        with:
+          tool: tauri-cli@^2.0
 
       - name: Build (cargo tauri build → exe + msi)
         run: cargo tauri build
