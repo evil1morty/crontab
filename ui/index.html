@@ -5,9 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Window Crontab</title>
   <script>
-    // Apply persisted theme before stylesheet renders to avoid flash.
+    // Resolve theme before the stylesheet paints to avoid a flash.
+    // - 'light' or 'dark' in localStorage = user toggled, honor it.
+    // - anything else (absent / cleared) = follow the OS via prefers-color-scheme.
     try {
       var t = localStorage.getItem('crontab-theme');
+      if (t !== 'light' && t !== 'dark') {
+        t = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+          ? 'light' : 'dark';
+      }
       if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
     } catch (e) {}
   </script>

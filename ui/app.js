@@ -634,16 +634,35 @@ setInterval(() => {
   if (state.tab === 'jobs' || state.tab === 'logs') render();
 }, 5000);
 
-/* === Theme === */
-function applyTheme(theme) {
+/* === Theme ===
+ * Default = system (prefers-color-scheme). The user's explicit toggle is
+ * persisted to localStorage; until they toggle, the OS preference wins
+ * and live changes (Settings → Personalization on Windows) are followed.
+ */
+function applyTheme(theme, persist) {
   if (theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
   else document.documentElement.removeAttribute('data-theme');
-  try { localStorage.setItem('crontab-theme', theme); } catch (e) {}
+  if (persist) {
+    try { localStorage.setItem('crontab-theme', theme); } catch (e) {}
+  }
 }
 $('#theme-toggle').addEventListener('click', () => {
   const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
-  applyTheme(next);
+  applyTheme(next, true);
 });
+
+if (window.matchMedia) {
+  const mq = window.matchMedia('(prefers-color-scheme: light)');
+  const onSystemThemeChange = (e) => {
+    let stored = null;
+    try { stored = localStorage.getItem('crontab-theme'); } catch (_) {}
+    if (stored !== 'light' && stored !== 'dark') {
+      applyTheme(e.matches ? 'light' : 'dark', false);
+    }
+  };
+  if (mq.addEventListener) mq.addEventListener('change', onSystemThemeChange);
+  else if (mq.addListener) mq.addListener(onSystemThemeChange);
+}
 
 /* === Boot === */
 (async function init() {

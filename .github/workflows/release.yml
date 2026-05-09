@@ -36,24 +36,36 @@ jobs:
       - name: Build (cargo tauri build → exe + msi)
         run: cargo tauri build
 
+      # Rename both artifacts with the tag (or short SHA for workflow_dispatch)
+      # so the GitHub Release page shows clear "portable" + "installer" names.
+      - name: Stage release artifacts
+        shell: pwsh
+        run: |
+          $ref = "${{ github.ref_name }}"
+          if ($ref -notmatch '^v\d') { $ref = "${{ github.sha }}".Substring(0,7) }
+          $stage = "release-artifacts"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item target/release/crontab.exe "$stage/Window-Crontab-$ref-portable.exe"
+          $msi = Get-ChildItem target/release/bundle/msi/*.msi | Select-Object -First 1
+          if ($msi) { Copy-Item $msi.FullName "$stage/Window-Crontab-$ref-x64.msi" }
+          Get-ChildItem $stage | Format-Table Name, Length
+
       - name: Upload portable .exe
         uses: actions/upload-artifact@v4
         with:
           name: crontab-portable
-          path: target/release/crontab.exe
+          path: release-artifacts/Window-Crontab-*-portable.exe
 
       - name: Upload .msi installer
         uses: actions/upload-artifact@v4
         with:
           name: crontab-msi
-          path: target/release/bundle/msi/*.msi
+          path: release-artifacts/Window-Crontab-*-x64.msi
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          fail_on_unmatched_files: false
-          files: |
-            target/release/crontab.exe
-            target/release/bundle/msi/*.msi
+          fail_on_unmatched_files: true
+          files: release-artifacts/*
