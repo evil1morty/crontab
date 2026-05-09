@@ -1,6 +1,6 @@
 [package]
 name = "crontab"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 rust-version = "1.77"
 description = "A small Windows tray app that runs commands on a schedule"

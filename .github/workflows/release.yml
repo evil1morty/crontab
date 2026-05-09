@@ -28,10 +28,15 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Install Tauri CLI (prebuilt binary)
-        uses: taiki-e/install-action@v2
-        with:
-          tool: tauri-cli@^2.0
+      - name: Install cargo-binstall (prebuilt binary fetcher)
+        uses: cargo-bins/cargo-binstall@main
+
+      - name: Install Tauri CLI
+        # cargo-binstall pulls the prebuilt tauri-cli release artifact
+        # in seconds instead of compiling it from source like
+        # `cargo install` (which took ~6 min on a cold cache). Pinned
+        # version matches the tauri 2.11.1 runtime in Cargo.lock.
+        run: cargo binstall tauri-cli --version 2.11.1 --no-confirm --locked
 
       - name: Build (cargo tauri build → exe + msi)
         run: cargo tauri build
