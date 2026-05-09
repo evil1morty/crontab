@@ -1,6 +1,6 @@
 [package]
 name = "crontab"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2021"
 rust-version = "1.77"
 description = "A small Windows tray app that runs commands on a schedule"
@@ -28,6 +28,12 @@ anyhow = "1"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
+
+# Single-instance enforcement: a 2nd launch forwards its argv to the
+# running instance (which focuses its window) instead of starting another
+# scheduler thread + tray icon.
+[target.'cfg(any(windows, target_os = "macos", target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = "2"
 
 [profile.release]
 opt-level = "z"

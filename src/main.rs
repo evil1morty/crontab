@@ -21,6 +21,16 @@ fn main() {
     scheduler::fire_startup_jobs(state.clone());
 
     tauri::Builder::default()
+        // Must be the FIRST plugin per the plugin docs: a second launch
+        // forwards argv + cwd to the running instance and exits, so we
+        // never end up with two scheduler threads or two tray icons.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+            }
+        }))
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::list_jobs,
