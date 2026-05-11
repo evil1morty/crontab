@@ -28,7 +28,10 @@ fn main() {
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.show();
                 let _ = w.unminimize();
+                let _ = w.set_always_on_top(true);
+                let _ = w.set_always_on_top(false);
                 let _ = w.set_focus();
+                let _ = w.emit("window-visibility", true);
             }
         }))
         .manage(state)
@@ -71,61 +74,79 @@ fn main() {
                 .item(&quit)
                 .build()?;
 
+            // Windows' SetForegroundWindow refuses to steal focus from the
+            // currently active process. The reliable workaround is to flip
+            // always_on_top on and back off — that bypasses the restriction
+            // without leaving the window pinned. Used by both the tray "Show"
+            // and the tray icon double-click.
+            fn bring_to_front(w: &tauri::WebviewWindow) {
+                let _ = w.show();
+                let _ = w.unminimize();
+                let _ = w.set_always_on_top(true);
+                let _ = w.set_always_on_top(false);
+                let _ = w.set_focus();
+            }
+
+            // Register menu events at the App level rather than on the tray
+            // builder. Both are documented as valid, but the app-level
+            // handler is the more reliable one in Tauri 2.x — events from
+            // tray menus fire here too, and we get a single place that owns
+            // the routing.
+            app.on_menu_event(|app, ev| match ev.id().as_ref() {
+                "show" => {
+                    if let Some(w) = app.get_webview_window("main") {
+                        bring_to_front(&w);
+                        let _ = w.emit("window-visibility", true);
+                    }
+                }
+                "hide" => {
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.hide();
+                        let _ = w.emit("window-visibility", false);
+                    }
+                }
+                "pause" => {
+                    let state = app.state::<Arc<scheduler::SharedState>>();
+                    let snap = {
+                        let mut cfg = state.config.lock().expect("state mutex poisoned");
+                        cfg.master_enabled = !cfg.master_enabled;
+                        cfg.clone()
+                    };
+                    let _ = config::save(&snap);
+                    *state.config_mtime.lock().expect("state mutex poisoned") =
+                        config::mtime(&config::config_path());
+                    let _ = app.emit("config-changed", ());
+                }
+                "logs" => {
+                    let state = app.state::<Arc<scheduler::SharedState>>();
+                    let dir = {
+                        let cfg = state.config.lock().expect("state mutex poisoned");
+                        if cfg.log_dir.is_empty() {
+                            config::default_log_dir()
+                        } else {
+                            std::path::PathBuf::from(&cfg.log_dir)
+                        }
+                    };
+                    std::fs::create_dir_all(&dir).ok();
+                    #[cfg(windows)]
+                    {
+                        let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+                    }
+                }
+                "quit" => app.exit(0),
+                _ => {}
+            });
+
             let _tray = TrayIconBuilder::with_id("main")
                 .menu(&menu)
                 .tooltip("Window Crontab")
                 .icon(app.default_window_icon().cloned().unwrap())
-                .on_menu_event(|app, ev| match ev.id.as_ref() {
-                    "show" => {
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.unminimize();
-                            let _ = w.set_focus();
-                        }
-                    }
-                    "hide" => {
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.hide();
-                        }
-                    }
-                    "pause" => {
-                        let state = app.state::<Arc<scheduler::SharedState>>();
-                        let snap = {
-                            let mut cfg = state.config.lock().expect("state mutex poisoned");
-                            cfg.master_enabled = !cfg.master_enabled;
-                            cfg.clone()
-                        };
-                        let _ = config::save(&snap);
-                        *state.config_mtime.lock().expect("state mutex poisoned") =
-                            config::mtime(&config::config_path());
-                        let _ = app.emit("config-changed", ());
-                    }
-                    "logs" => {
-                        let state = app.state::<Arc<scheduler::SharedState>>();
-                        let dir = {
-                            let cfg = state.config.lock().expect("state mutex poisoned");
-                            if cfg.log_dir.is_empty() {
-                                config::default_log_dir()
-                            } else {
-                                std::path::PathBuf::from(&cfg.log_dir)
-                            }
-                        };
-                        std::fs::create_dir_all(&dir).ok();
-                        #[cfg(windows)]
-                        {
-                            let _ = std::process::Command::new("explorer").arg(&dir).spawn();
-                        }
-                    }
-                    "quit" => app.exit(0),
-                    _ => {}
-                })
                 .on_tray_icon_event(|tray, ev| {
                     if let tauri::tray::TrayIconEvent::DoubleClick { .. } = ev {
                         let app = tray.app_handle();
                         if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.unminimize();
-                            let _ = w.set_focus();
+                            bring_to_front(&w);
+                            let _ = w.emit("window-visibility", true);
                         }
                     }
                 })
@@ -137,6 +158,12 @@ fn main() {
                     if let WindowEvent::CloseRequested { api, .. } = ev {
                         api.prevent_close();
                         let _ = w_clone.hide();
+                        // Tell the webview to stop its 5s refresh timer.
+                        // document.hidden isn't reliable on Windows when a
+                        // Tauri window is hidden to tray, so we signal it
+                        // explicitly. Without this the webview keeps doing
+                        // IPC every 5s while invisible → idle CPU spike.
+                        let _ = w_clone.emit("window-visibility", false);
                     }
                 });
                 if start_hidden {

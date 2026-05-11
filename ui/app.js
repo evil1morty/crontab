@@ -620,17 +620,28 @@ document.addEventListener('keydown', (e) => {
 listen('jobs-changed', () => { if (state.tab === 'jobs') render(); });
 listen('config-changed', () => { loadMaster(); });
 
+// Rust emits `window-visibility` on hide/show because document.hidden is
+// not reliably set when a Tauri window is hidden into the tray on Windows.
+// We track it ourselves so the 5s refresh tick below can skip work while
+// the window is invisible — otherwise the webview keeps doing IPC every
+// 5s and burns idle CPU.
+let windowVisible = true;
+listen('window-visibility', (e) => { windowVisible = !!e.payload; });
+
 // Re-render the visible tab every 5s so "next run in Xm" stays fresh and
 // finished jobs disappear from the running set. Skipped when:
-//  - window is hidden (browsers report this even when a Tauri webview is
-//    minimized to tray on most platforms)
+//  - window is hidden (covers both the tray case via windowVisible and
+//    document.hidden for browsers that do report it)
 //  - the form is open (don't blow away in-flight typing)
 //  - the user is typing in the search filter (full re-render would steal
 //    focus and the caret position mid-keystroke)
+//  - there are no jobs and no run history (nothing time-sensitive to
+//    update; avoid the IPC + DOM rebuild every tick)
 setInterval(() => {
-  if (document.hidden) return;
+  if (!windowVisible || document.hidden) return;
   if (state.form.open) return;
   if (document.activeElement && document.activeElement.id === 'jobs-filter') return;
+  if (state.jobs.length === 0 && state.runs.length === 0) return;
   if (state.tab === 'jobs' || state.tab === 'logs') render();
 }, 5000);
 
