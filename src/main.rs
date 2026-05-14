@@ -166,8 +166,16 @@ fn main() {
                         let _ = w_clone.emit("window-visibility", false);
                     }
                 });
-                if start_hidden {
-                    let _ = w.hide();
+                // Window is created hidden (visible:false in tauri.conf.json)
+                // so autostart with --hidden has nothing to race against. When
+                // launched without --hidden we show it explicitly here.
+                // Previously the window was created visible and then hidden in
+                // this branch, which on Windows produced a half-initialized
+                // handle: tray events fired but show()/set_focus() did nothing
+                // until the process was killed and relaunched.
+                if !start_hidden {
+                    let _ = w.show();
+                    let _ = w.set_focus();
                 }
             }
 
