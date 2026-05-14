@@ -58,6 +58,7 @@ fn main() {
             commands::view_job_log,
             commands::quit_app,
             commands::hide_window,
+            commands::is_window_visible,
         ])
         .setup(move |app| {
             let show = MenuItemBuilder::with_id("show", "Show").build(app)?;

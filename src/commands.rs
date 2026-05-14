@@ -431,3 +431,10 @@ pub fn hide_window(app: AppHandle) {
         let _ = w.hide();
     }
 }
+
+#[tauri::command]
+pub fn is_window_visible(app: AppHandle) -> bool {
+    app.get_webview_window("main")
+        .and_then(|w| w.is_visible().ok())
+        .unwrap_or(true)
+}
