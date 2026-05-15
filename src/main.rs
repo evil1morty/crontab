@@ -9,7 +9,20 @@ mod scheduler;
 use std::sync::Arc;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
-use tauri::{Emitter, Manager, WindowEvent};
+use tauri::{Emitter, Manager, WebviewWindow, WindowEvent};
+
+// Windows' SetForegroundWindow refuses to steal focus from the currently
+// active process. Flipping always_on_top on then off bypasses that without
+// leaving the window pinned. Shared by single-instance, tray click, and the
+// "Show" menu item.
+fn bring_to_front(w: &WebviewWindow) {
+    let _ = w.show();
+    let _ = w.unminimize();
+    let _ = w.set_always_on_top(true);
+    let _ = w.set_always_on_top(false);
+    let _ = w.set_focus();
+    let _ = w.emit("window-visibility", true);
+}
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -26,12 +39,7 @@ fn main() {
         // never end up with two scheduler threads or two tray icons.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
-                let _ = w.show();
-                let _ = w.unminimize();
-                let _ = w.set_always_on_top(true);
-                let _ = w.set_always_on_top(false);
-                let _ = w.set_focus();
-                let _ = w.emit("window-visibility", true);
+                bring_to_front(&w);
             }
         }))
         .manage(state)
@@ -62,92 +70,66 @@ fn main() {
         ])
         .setup(move |app| {
             let show = MenuItemBuilder::with_id("show", "Show").build(app)?;
-            let hide = MenuItemBuilder::with_id("hide", "Hide").build(app)?;
             let pause = MenuItemBuilder::with_id("pause", "Toggle pause all").build(app)?;
             let logs = MenuItemBuilder::with_id("logs", "Open logs folder").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
 
             let menu = MenuBuilder::new(app)
-                .items(&[&show, &hide])
+                .item(&show)
                 .separator()
                 .items(&[&pause, &logs])
                 .separator()
                 .item(&quit)
                 .build()?;
 
-            // Windows' SetForegroundWindow refuses to steal focus from the
-            // currently active process. The reliable workaround is to flip
-            // always_on_top on and back off — that bypasses the restriction
-            // without leaving the window pinned. Used by both the tray "Show"
-            // and the tray icon double-click.
-            fn bring_to_front(w: &tauri::WebviewWindow) {
-                let _ = w.show();
-                let _ = w.unminimize();
-                let _ = w.set_always_on_top(true);
-                let _ = w.set_always_on_top(false);
-                let _ = w.set_focus();
-            }
-
-            // Register menu events at the App level rather than on the tray
-            // builder. Both are documented as valid, but the app-level
-            // handler is the more reliable one in Tauri 2.x — events from
-            // tray menus fire here too, and we get a single place that owns
-            // the routing.
-            app.on_menu_event(|app, ev| match ev.id().as_ref() {
-                "show" => {
-                    if let Some(w) = app.get_webview_window("main") {
-                        bring_to_front(&w);
-                        let _ = w.emit("window-visibility", true);
-                    }
-                }
-                "hide" => {
-                    if let Some(w) = app.get_webview_window("main") {
-                        let _ = w.hide();
-                        let _ = w.emit("window-visibility", false);
-                    }
-                }
-                "pause" => {
-                    let state = app.state::<Arc<scheduler::SharedState>>();
-                    let snap = {
-                        let mut cfg = state.config.lock().expect("state mutex poisoned");
-                        cfg.master_enabled = !cfg.master_enabled;
-                        cfg.clone()
-                    };
-                    let _ = config::save(&snap);
-                    *state.config_mtime.lock().expect("state mutex poisoned") =
-                        config::mtime(&config::config_path());
-                    let _ = app.emit("config-changed", ());
-                }
-                "logs" => {
-                    let state = app.state::<Arc<scheduler::SharedState>>();
-                    let dir = {
-                        let cfg = state.config.lock().expect("state mutex poisoned");
-                        if cfg.log_dir.is_empty() {
-                            config::default_log_dir()
-                        } else {
-                            std::path::PathBuf::from(&cfg.log_dir)
-                        }
-                    };
-                    std::fs::create_dir_all(&dir).ok();
-                    #[cfg(windows)]
-                    {
-                        let _ = std::process::Command::new("explorer").arg(&dir).spawn();
-                    }
-                }
-                "quit" => app.exit(0),
-                _ => {}
-            });
-
+            // Wire menu events on the tray builder, not at App level. In
+            // Tauri 2.x on Windows the app-level handler does not reliably
+            // receive tray menu clicks, which is why "Show" was dead.
             let _tray = TrayIconBuilder::with_id("main")
                 .menu(&menu)
                 .tooltip("Window Crontab")
                 .icon(app.default_window_icon().cloned().unwrap())
-                .on_tray_icon_event(|tray, ev| {
-                    if let tauri::tray::TrayIconEvent::DoubleClick { .. } = ev {
-                        let app = tray.app_handle();
+                .on_menu_event(|app, ev| match ev.id().as_ref() {
+                    "show" => {
                         if let Some(w) = app.get_webview_window("main") {
                             bring_to_front(&w);
-                            let _ = w.emit("window-visibility", true);
+                        }
+                    }
+                    "pause" => {
+                        let state = app.state::<Arc<scheduler::SharedState>>();
+                        let snap = {
+                            let mut cfg = state.config.lock().expect("state mutex poisoned");
+                            cfg.master_enabled = !cfg.master_enabled;
+                            cfg.clone()
+                        };
+                        let _ = config::save(&snap);
+                        *state.config_mtime.lock().expect("state mutex poisoned") =
+                            config::mtime(&config::config_path());
+                        let _ = app.emit("config-changed", ());
+                    }
+                    "logs" => {
+                        let state = app.state::<Arc<scheduler::SharedState>>();
+                        let dir = {
+                            let cfg = state.config.lock().expect("state mutex poisoned");
+                            if cfg.log_dir.is_empty() {
+                                config::default_log_dir()
+                            } else {
+                                std::path::PathBuf::from(&cfg.log_dir)
+                            }
+                        };
+                        std::fs::create_dir_all(&dir).ok();
+                        #[cfg(windows)]
+                        {
+                            let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+                        }
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, ev| {
+                    if let tauri::tray::TrayIconEvent::DoubleClick { .. } = ev {
+                        if let Some(w) = tray.app_handle().get_webview_window("main") {
+                            bring_to_front(&w);
                         }
                     }
                 })
