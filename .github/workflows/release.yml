@@ -9,10 +9,6 @@ on:
 permissions:
   contents: write
 
-env:
-  # Opt JS-based actions into Node 24 ahead of the June 2026 forced switch.
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build-windows:
     name: Build Windows release
@@ -55,17 +51,16 @@ jobs:
           if ($msi) { Copy-Item $msi.FullName "$stage/Window-Crontab-$ref-x64.msi" }
           Get-ChildItem $stage | Format-Table Name, Length
 
-      - name: Upload portable .exe
+      # Single upload step: a prior split (portable + msi) saw the second
+      # upload-artifact invocation get killed mid-run, breaking the release.
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: crontab-portable
-          path: release-artifacts/Window-Crontab-*-portable.exe
-
-      - name: Upload .msi installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: crontab-msi
-          path: release-artifacts/Window-Crontab-*-x64.msi
+          name: crontab-windows
+          path: |
+            release-artifacts/Window-Crontab-*-portable.exe
+            release-artifacts/Window-Crontab-*-x64.msi
+          if-no-files-found: error
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
