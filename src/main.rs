@@ -30,8 +30,6 @@ fn main() {
 
     let cfg = config::load().unwrap_or_default();
     let state = scheduler::SharedState::new(cfg);
-    scheduler::spawn(state.clone());
-    scheduler::fire_startup_jobs(state.clone());
 
     tauri::Builder::default()
         // Must be the FIRST plugin per the plugin docs: a second launch
@@ -42,7 +40,7 @@ fn main() {
                 bring_to_front(&w);
             }
         }))
-        .manage(state)
+        .manage(state.clone())
         .invoke_handler(tauri::generate_handler![
             commands::list_jobs,
             commands::save_job,
@@ -69,6 +67,14 @@ fn main() {
             commands::is_window_visible,
         ])
         .setup(move |app| {
+            // Start the scheduler only after Tauri's setup phase has begun.
+            // Doing this before Builder::run() means a second-instance
+            // process spawns the thread and fires run_on_startup jobs (as
+            // detached subprocesses) before the single-instance plugin
+            // terminates it — duplicating every startup command.
+            scheduler::spawn(state.clone());
+            scheduler::fire_startup_jobs(state.clone());
+
             let show = MenuItemBuilder::with_id("show", "Show").build(app)?;
             let pause = MenuItemBuilder::with_id("pause", "Toggle pause all").build(app)?;
             let logs = MenuItemBuilder::with_id("logs", "Open logs folder").build(app)?;

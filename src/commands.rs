@@ -191,6 +191,17 @@ pub fn run_job_now(state: State<'_, Arc<SharedState>>, index: usize) -> Result<S
         };
         (job, log_dir)
     };
+    // Honor allow_concurrent the same way the scheduler tick does. Without
+    // this, two fast "Run now" clicks would launch two children while the
+    // running set only carries one marker — the first child's exit then
+    // clears the marker mid-run, leaving the second child invisible to the
+    // next minute's tick and risking a third concurrent fire.
+    if !job.allow_concurrent {
+        let running = state.running.lock().expect("state mutex poisoned");
+        if running.contains(&job.name) {
+            return Err("job is already running".into());
+        }
+    }
     std::fs::create_dir_all(&log_dir).ok();
     let name = job.name.clone();
     crate::scheduler::fire(&job, &log_dir, state.inner().clone());
