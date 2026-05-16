@@ -622,32 +622,31 @@ listen('config-changed', () => { loadMaster(); });
 
 // Rust emits `window-visibility` on hide/show because document.hidden is
 // not reliably set when a Tauri window is hidden into the tray on Windows.
-// We track it ourselves so the refresh tick below can skip work while
-// the window is invisible — otherwise the webview keeps doing IPC every
-// tick and burns idle CPU. Default false so an autostart with --hidden
-// doesn't tick until Rust confirms the window is up; init() then syncs
-// to the real state.
+// We track it ourselves so we can fully cancel the refresh tick while
+// hidden — keeping a setInterval alive (even one that bails) prevents
+// WebView2 from settling into a true idle, which we saw as a slow CPU
+// climb across open/close cycles.
 let windowVisible = false;
-listen('window-visibility', (e) => { windowVisible = !!e.payload; });
-
-// Re-render the visible tab every 30s so "next run in Xm" stays fresh
-// (minute-level precision; 5s was overkill and burned idle CPU). Skipped
-// when:
-//  - window is hidden (covers both the tray case via windowVisible and
-//    document.hidden for browsers that do report it)
-//  - the form is open (don't blow away in-flight typing)
-//  - the user is typing in the search filter (full re-render would steal
-//    focus and the caret position mid-keystroke)
-//  - there are no enabled jobs and no run history (nothing time-sensitive
-//    to update; avoid the IPC + DOM rebuild every tick)
-setInterval(() => {
-  if (!windowVisible || document.hidden) return;
+let refreshTimer = null;
+function refreshTick() {
   if (state.form.open) return;
   if (document.activeElement && document.activeElement.id === 'jobs-filter') return;
   const hasEnabled = state.jobs.some(j => j.enabled);
   if (!hasEnabled && state.runs.length === 0) return;
   if (state.tab === 'jobs' || state.tab === 'logs') render();
-}, 30000);
+}
+function startRefresh() {
+  if (refreshTimer != null) return;
+  // 30s cadence: minute-level "next run in Xm" precision is plenty.
+  refreshTimer = setInterval(refreshTick, 30000);
+}
+function stopRefresh() {
+  if (refreshTimer != null) { clearInterval(refreshTimer); refreshTimer = null; }
+}
+listen('window-visibility', (e) => {
+  windowVisible = !!e.payload;
+  if (windowVisible) startRefresh(); else stopRefresh();
+});
 
 /* === Theme ===
  * Default = system (prefers-color-scheme). The user's explicit toggle is
@@ -688,4 +687,5 @@ if (window.matchMedia) {
   try { windowVisible = await invoke('is_window_visible'); } catch (_) { windowVisible = true; }
   await Promise.all([loadMaster(), loadJobs(), loadPresets()]);
   await render();
+  if (windowVisible) startRefresh();
 })();

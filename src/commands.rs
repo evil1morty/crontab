@@ -440,6 +440,12 @@ pub fn quit_app(app: AppHandle) {
 pub fn hide_window(app: AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.hide();
+        // Mirror the CloseRequested handler in main.rs. Without this emit,
+        // hiding via Esc or Ctrl+W leaves the webview's `windowVisible`
+        // flag stuck at true, so the 30s refresh tick keeps re-rendering an
+        // invisible window — visible as a slow CPU climb over open/close
+        // cycles when WebView2 should be idling.
+        let _ = w.emit("window-visibility", false);
     }
 }
 
