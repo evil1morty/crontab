@@ -22,10 +22,10 @@
           Value="1"
           KeyPath="yes"/>
         <RemoveRegistryValue
+          Id="RemoveAutostartRunValue"
           Root="HKCU"
           Key="Software\Microsoft\Windows\CurrentVersion\Run"
-          Name="ClaudeCron"
-          Action="removeOnUninstall"/>
+          Name="ClaudeCron"/>
       </Component>
     </DirectoryRef>
   </Fragment>
