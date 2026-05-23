@@ -256,6 +256,12 @@ button:focus-visible, .toggle:focus-within .slider, .checkbox-row:focus-within i
 .btn-danger:hover { background: var(--danger-soft); }
 .btn-icon { padding: 6px; border-radius: var(--radius-sm); }
 .btn-icon svg { display: block; }
+/* Run button while a non-concurrent run is alive: dimmed, not clickable,
+   icon spins to signal "busy" rather than "ready". */
+.btn-icon.is-blocked { color: var(--muted-2); cursor: not-allowed; }
+.btn-icon.is-blocked:hover { background: transparent; color: var(--muted-2); }
+.btn-icon.is-blocked svg { animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* === Cards === */
 .card {
@@ -268,6 +274,13 @@ button:focus-visible, .toggle:focus-within .slider, .checkbox-row:focus-within i
 .card:hover { background: var(--surface-2); border-color: var(--border-strong); }
 .card.is-disabled { opacity: 0.55; }
 .card.is-disabled:hover { background: var(--surface); }
+/* A job with a live run: success-tinted border + soft glow, mirroring the
+   "running" pill so the whole row reads as active at a glance. */
+.card.is-running {
+  border-color: var(--success);
+  box-shadow: 0 0 0 1px var(--success-soft), 0 0 14px -2px var(--success-soft);
+}
+.card.is-running:hover { border-color: var(--success); }
 
 /* === Job card === */
 .job-list { display: flex; flex-direction: column; gap: 10px; }

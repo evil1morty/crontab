@@ -14,6 +14,7 @@ const SVG = {
   history:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 13.5"/></svg>',
   output: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg>',
   search: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+  spinner:'<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>',
 };
 
 const state = {
@@ -223,15 +224,23 @@ function jobCard(j) {
   if (j.allow_concurrent) pills += `<span class="count-pill is-muted" title="Concurrent runs allowed">∥ concurrent</span>`;
   if (j.is_running) pills += `<span class="count-pill is-running" title="A run is in progress"><span class="dot-inline"></span> running</span>`;
 
+  // When concurrent runs are off and one is alive, "Run now" would just bounce
+  // with "job is already running" — show it as a busy spinner instead of a
+  // play button so the disabled state is obvious before the click.
+  const blockRun = j.is_running && !j.allow_concurrent;
+  const runBtn = blockRun
+    ? `<button class="btn btn-icon btn-ghost is-blocked" data-action="run" title="A run is already in progress" aria-label="Running" aria-disabled="true">${SVG.spinner}</button>`
+    : `<button class="btn btn-icon btn-ghost" data-action="run" title="Run now" aria-label="Run now">${SVG.play}</button>`;
+
   return `
-    <div class="card ${j.enabled ? '' : 'is-disabled'}" data-index="${j.index}">
+    <div class="card ${j.enabled ? '' : 'is-disabled'}${j.is_running ? ' is-running' : ''}" data-index="${j.index}">
       <div class="job-row1">
         <label class="toggle"><input type="checkbox" ${j.enabled ? 'checked' : ''} data-action="toggle"/><span class="slider"></span></label>
         <span class="job-name">${escHtml(j.name)}</span>
         <span class="${cronClass}">${escHtml(j.schedule)}</span>
         ${pills}
         <div class="job-actions">
-          <button class="btn btn-icon btn-ghost" data-action="run" title="Run now" aria-label="Run now">${SVG.play}</button>
+          ${runBtn}
           <button class="btn btn-icon btn-ghost" data-action="output" title="View output" aria-label="View output log">${SVG.output}</button>
           <button class="btn btn-icon btn-ghost" data-action="edit" title="Edit" aria-label="Edit job">${SVG.edit}</button>
           <button class="btn btn-icon btn-danger" data-action="delete" title="Delete" aria-label="Delete job">${SVG.trash}</button>
@@ -276,8 +285,18 @@ function bindJobs() {
         toast('job deleted');
         render();
       } else if (action === 'run') {
-        const name = await invoke('run_job_now', { index: idx });
-        toast(`ran '${name}' now`);
+        const job = state.jobs.find(x => x.index === idx);
+        if (job && job.is_running && !job.allow_concurrent) {
+          toast('already running', true);
+          return;
+        }
+        try {
+          const name = await invoke('run_job_now', { index: idx });
+          toast(`ran '${name}' now`);
+          render(); // reflect the now-running state right away
+        } catch (err) {
+          toast(String(err), true);
+        }
       } else if (action === 'output') {
         try { await invoke('view_job_log', { index: idx }); }
         catch (err) { toast(String(err), true); }
