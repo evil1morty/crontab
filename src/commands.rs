@@ -267,21 +267,38 @@ pub fn get_master_enabled(state: State<'_, Arc<SharedState>>) -> bool {
 }
 
 #[tauri::command]
-pub fn is_autostart() -> bool {
-    autostart::is_enabled()
+pub fn is_autostart(state: State<'_, Arc<SharedState>>) -> bool {
+    // Report the persisted intent, not the live registry. The Run key can be
+    // wiped by an MSI reinstall; the launch-time reconcile heals it, but the
+    // checkbox should reflect what the user chose either way.
+    state
+        .config
+        .lock()
+        .expect("state mutex poisoned")
+        .autostart
 }
 
 #[tauri::command]
-pub fn set_autostart(enabled: bool) -> Result<(), String> {
+pub fn set_autostart(state: State<'_, Arc<SharedState>>, enabled: bool) -> Result<(), String> {
     let exe = std::env::current_exe()
         .map_err(|e| e.to_string())?
         .to_string_lossy()
         .to_string();
     if enabled {
-        autostart::enable(&exe).map_err(|e| e.to_string())
+        autostart::enable(&exe).map_err(|e| e.to_string())?;
     } else {
-        autostart::disable().map_err(|e| e.to_string())
+        autostart::disable().map_err(|e| e.to_string())?;
     }
+    // Persist the intent so it survives registry wipes and exe-path changes.
+    let snap = {
+        let mut cfg = state.config.lock().expect("state mutex poisoned");
+        cfg.autostart = enabled;
+        cfg.clone()
+    };
+    config::save(&snap).map_err(|e| e.to_string())?;
+    *state.config_mtime.lock().expect("state mutex poisoned") =
+        config::mtime(&config::config_path());
+    Ok(())
 }
 
 #[tauri::command]

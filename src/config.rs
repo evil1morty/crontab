@@ -52,6 +52,12 @@ pub struct Config {
     pub log_dir: String,
     #[serde(default = "default_max_history")]
     pub max_run_history: usize,
+    /// User's "start with Windows" intent. The actual HKCU Run key lives
+    /// outside our control (an MSI reinstall can wipe it, an upgrade can move
+    /// the exe), so we treat this flag as the source of truth and re-assert
+    /// the Run key from it on every launch.
+    #[serde(default)]
+    pub autostart: bool,
     #[serde(default, rename = "job")]
     pub jobs: Vec<Job>,
 }
@@ -62,6 +68,7 @@ impl Default for Config {
             master_enabled: true,
             log_dir: default_log_dir().to_string_lossy().to_string(),
             max_run_history: default_max_history(),
+            autostart: false,
             jobs: vec![],
         }
     }

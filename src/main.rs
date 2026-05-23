@@ -67,6 +67,35 @@ fn main() {
             commands::is_window_visible,
         ])
         .setup(move |app| {
+            // Reconcile autostart against the registry. The HKCU Run key lives
+            // outside our control: an MSI reinstall can wipe it and an upgrade
+            // can leave it pointing at a stale exe path. Treat the config flag
+            // as intent and re-assert the key against the current exe on every
+            // launch. Also migrate users who enabled autostart before the flag
+            // existed (registry set, config still false).
+            {
+                let (want, migrated) = {
+                    let mut cfg = state.config.lock().expect("state mutex poisoned");
+                    let migrated = !cfg.autostart && autostart::is_enabled();
+                    if migrated {
+                        cfg.autostart = true;
+                    }
+                    (cfg.autostart, migrated)
+                };
+                if want {
+                    if let Ok(exe) = std::env::current_exe() {
+                        let _ = autostart::enable(&exe.to_string_lossy());
+                    }
+                }
+                if migrated {
+                    let snap = state.config.lock().expect("state mutex poisoned").clone();
+                    if config::save(&snap).is_ok() {
+                        *state.config_mtime.lock().expect("state mutex poisoned") =
+                            config::mtime(&config::config_path());
+                    }
+                }
+            }
+
             // Start the scheduler only after Tauri's setup phase has begun.
             // Doing this before Builder::run() means a second-instance
             // process spawns the thread and fires run_on_startup jobs (as
